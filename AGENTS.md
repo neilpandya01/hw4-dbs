@@ -13,8 +13,47 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 A personal to-do list where every task belongs to a day. At a daily wrap-up time you keep or move what's left; unfinished tasks roll over to the next day. Flows are in `flows.md`.
 
 ## Stack and rules
-- Next.js 16 + Tailwind CSS 4. All data is in localStorage. No backend, database, accounts, external APIs, or extra npm packages.
+- Next.js 16 + Tailwind CSS 4, Clerk for sign-in, Supabase for the database, Open-Meteo for weather. Deployed on Vercel.
+- Being moved off localStorage (hw3) onto Supabase per the data model below. Ask before adding npm packages beyond Clerk, Supabase, and Playwright.
 - Check with `npm run build` and `npm run lint` before committing. Pull first: the README is sometimes edited on GitHub.
+
+## Data model (Supabase)
+Read this before building anything that saves data. Two tables; each row belongs to one person through `user_id`.
+
+`user_id` is the **Clerk user ID** (text like `user_2abc...`), taken from the Clerk session token's `sub` claim (`auth.jwt()->>'sub'`). It is not a Supabase auth user or a uuid. Every table has row-level security: a person can only select, insert, update, or delete rows where `user_id = auth.jwt()->>'sub'`.
+
+### `tasks`: one row per task
+| column | type | notes |
+|---|---|---|
+| `id` | uuid, primary key | default `gen_random_uuid()` |
+| `user_id` | text, not null | owner; default `auth.jwt()->>'sub'` |
+| `title` | text, not null | 1–120 characters |
+| `date` | date, not null | the local day it's planned for (`YYYY-MM-DD`, same as `src/lib/dates.ts`) |
+| `done` | boolean, not null | default false |
+| `done_at` | timestamptz, null | set when checked off, cleared when unchecked |
+| `position` | bigint, not null | order within its day, lower first; was `order` in hw3 (`order` is reserved in SQL) |
+| `carried_from` | date, null | the day it was first planned for, if it rolled over; cleared when acted on |
+| `created_at` | timestamptz, not null | default `now()` |
+
+Index on `(user_id, date)`: every view loads tasks by person and day.
+
+### `user_settings`: one row per person
+| column | type | notes |
+|---|---|---|
+| `user_id` | text, primary key | owner; one row per person; default `auth.jwt()->>'sub'` |
+| `wrap_up_time` | time, null | when their day ends; null means never chosen, use 18:00 |
+| `onboarded` | boolean, not null | default false; true once onboarding is finished or skipped |
+| `weather_mode` | text, null | `location`, `place`, or `off`; null means not asked yet |
+| `weather_lat` | numeric(4,2), null | rounded to 2 decimals (about 1 km); never store an exact position |
+| `weather_lon` | numeric(5,2), null | rounded to 2 decimals |
+| `weather_place_name` | text, null | label for a searched city (e.g. "Chicago, Illinois"); null for `location`, shown as "Your location" |
+
+`weather_mode` meanings: `location` reads the device's position on each device (saved coordinates are the fallback when a device hasn't granted access); `place` always uses the saved city; `off` shows no weather.
+
+### Not in the database
+- **The forecast.** Fetched from Open-Meteo each time; it changes hourly and is the same for everyone. Store the location, never the weather.
+- **Wrap-up "Not now" (`wrapUpDismissedOn`) and the one-time hint (`showFirstHint`).** Small UI memory that stays in localStorage on each device; a new device may show them again.
+- **hw3 localStorage tasks** are not imported; accounts start fresh.
 
 ## Where things are
 - `src/lib/store.ts`: the only data layer. Key `todo:v1`; `useStore()`; every action (add, toggle, move, place, delete) returns an Undo that restores only the tasks it touched.
