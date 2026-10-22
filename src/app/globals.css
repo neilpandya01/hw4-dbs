@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/* Color tokens. Text pairs are chosen for 4.5:1+ contrast on their background. */
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --ink: #1c1b19;
+  --muted: #5f5c55;
+  --line: #dedbd3;
+  /* Borders of things you type in or press: 3:1 against their background (WCAG 1.4.11). */
+  --control: #8a857b;
+  --accent: #2f5d50;
+  --accent-ink: #ffffff;
+  --accent-soft: #e3eeea;
+  --danger: #b42318;
+  --warn: #8a4b00;
+  --warn-soft: #fdf3e2;
+  --highlight: #fff4c2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151514;
+    --surface: #1f1f1d;
+    --ink: #eeece7;
+    --muted: #a8a49b;
+    --line: #3a3935;
+    --control: #77736b;
+    --accent: #8fd1bd;
+    --accent-ink: #10231d;
+    --accent-soft: #1f322c;
+    --danger: #ff8a7f;
+    --warn: #f3bf6b;
+    --warn-soft: #2e2615;
+    --highlight: #3a3420;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-control: var(--control);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-highlight: var(--highlight);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Keep anything scrolled into view (including focus from Tab) clear of the pinned header and the toast. */
+html {
+  scroll-padding-top: 8rem;
+  scroll-padding-bottom: 5rem;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* One visible focus style everywhere, for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* A just-added task: light yellow for a few seconds, then a quick fade back. */
+@keyframes just-added {
+  0%,
+  80% {
+    background-color: var(--highlight);
+  }
+  100% {
+    background-color: var(--surface);
+  }
+}
+
+.just-added {
+  animation: just-added 4s ease-out forwards;
+}
+
+/* Without motion, stay yellow (no fade) until the highlight is removed. */
+@media (prefers-reduced-motion: reduce) {
+  .just-added {
+    animation: none;
+    background-color: var(--highlight);
+  }
+}
+
+input[type="date"] {
+  color-scheme: light dark;
+}
