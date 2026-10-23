@@ -18,7 +18,7 @@ export function TodayView() {
   const store = useStore();
   const clock = useClock();
   // Someone new is sent to /welcome by OnboardingGate; show the skeleton, not an empty list, meanwhile.
-  const isNew = !!store && isNewUser(store.data);
+  const isNew = !!store && isNewUser(store);
 
   if (!store || !clock || isNew) return <ListSkeleton />;
 

@@ -2,6 +2,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
+import { AccountSync } from "@/components/AccountSync";
 import { AddedAnnouncer } from "@/components/AddedAnnouncer";
 import { AppHeader } from "@/components/AppHeader";
 import { DayRollover } from "@/components/DayRollover";
@@ -25,7 +26,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Dayplan",
-  description: "A day-by-day to-do list that remembers you on this device.",
+  description: "A day-by-day to-do list, saved to your account.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -53,6 +54,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </SignedInOnly>
             <main id="main" tabIndex={-1} className="mx-auto outline-none flex w-full max-w-xl flex-1 flex-col gap-6 px-4 pt-6 pb-24">
               <SignedInOnly>
+                <AccountSync />
                 <StorageBanner />
                 <AddedAnnouncer />
                 <DayRollover />
@@ -60,7 +62,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 <Suspense fallback={null}>
                   <OnboardingGate />
                 </Suspense>
-                {/* Loads weather settings and keeps the forecast fresh. Reads the URL, so it has its own Suspense. */}
+                {/* Keeps the forecast fresh. Reads the URL, so it has its own Suspense. */}
                 <Suspense fallback={null}>
                   <WeatherSync />
                 </Suspense>
@@ -69,7 +71,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             </main>
             <SignedInOnly>
               <footer className="mx-auto w-full max-w-xl px-4 pb-6 text-center text-sm text-muted">
-                Saved on this device
+                Saved to your account
               </footer>
             </SignedInOnly>
           </ToastProvider>

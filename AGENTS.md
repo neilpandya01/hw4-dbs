@@ -14,7 +14,7 @@ A personal to-do list where every task belongs to a day. At a daily wrap-up time
 
 ## Stack and rules
 - Next.js 16 + Tailwind CSS 4, Clerk for sign-in, Supabase for the database, Open-Meteo for weather. Deployed on Vercel.
-- Being moved off localStorage (hw3) onto Supabase per the data model below. Ask before adding npm packages beyond Clerk, Supabase, and Playwright.
+- Data lives in Supabase per the data model below (hw3 used localStorage). Ask before adding npm packages beyond Clerk, Supabase, and Playwright.
 - Check with `npm run build` and `npm run lint` before committing. Pull first: the README is sometimes edited on GitHub.
 
 ## Data model (Supabase)
@@ -56,11 +56,12 @@ Index on `(user_id, date)`: every view loads tasks by person and day.
 - **hw3 localStorage tasks** are not imported; accounts start fresh.
 
 ## Where things are
-- `src/lib/store.ts`: the only data layer. Key `todo:v1`; `useStore()`; every action (add, toggle, move, place, delete) returns an Undo that restores only the tasks it touched.
+- `src/lib/store.ts`: the only data layer for tasks, wrap-up time, and onboarding. `useStore()` is null until the signed-in person's rows load. Changes show at once, then save in order: after each action the changed tasks are upserted and removed ones deleted, so actions never call the database directly. Every action (add, toggle, move, place, delete) returns an Undo that restores only the tasks it touched. Failed loads or saves show `StorageBanner` with a reload.
 - `src/lib/dates.ts`: local `YYYY-MM-DD` day keys. Never use `toISOString()` for a day.
 - `src/lib/validate.ts`: task errors and soft warnings (similar names, far-future dates). `src/lib/clock.ts`: current day and minute, ticking on the minute.
-- `src/lib/supabase.ts`: the one browser Supabase client; sends the Clerk session token (set by `WeatherSync`). Publishable key only.
-- Weather: `src/lib/weather.ts` (Open-Meteo calls and parsing, icons' `Sky`), `src/lib/weatherSettings.ts` (the person's `user_settings` weather columns), `src/lib/forecast.ts` (the shared forecast and when to refetch), `src/components/WeatherSync.tsx` (in the layout: loads settings, triggers checks), `WeatherSetup.tsx` (location → city → off), `Weather.tsx` (Today card, At a Glance chip), `WeatherIcon.tsx`.
+- `src/lib/supabase.ts`: the one browser Supabase client; sends the Clerk session token (set by `AccountSync`). Publishable key only.
+- `src/components/AccountSync.tsx` (in the layout): on sign-in loads tasks, settings, and weather choice; clears them on sign-out; refetches on returning to the tab.
+- Weather: `src/lib/weather.ts` (Open-Meteo calls and parsing, icons' `Sky`), `src/lib/weatherSettings.ts` (the person's `user_settings` weather columns), `src/lib/forecast.ts` (the shared forecast and when to refetch), `src/components/WeatherSync.tsx` (in the layout: triggers forecast checks), `WeatherSetup.tsx` (location → city → off), `Weather.tsx` (Today card, At a Glance chip), `WeatherIcon.tsx`.
 - Routes: `/` Today, `/add`, `/glance` At a Glance, `/calendar`, `/done`, `/welcome` onboarding (`?step=time|weather|task`).
 - `src/components`: shared UI. Reuse it instead of one-off markup.
 

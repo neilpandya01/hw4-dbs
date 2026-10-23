@@ -22,7 +22,7 @@ export function AppHeader({ nav }: { nav: ReactNode }) {
   const [editing, setEditing] = useState(false);
   const wrapUpButton = useRef<HTMLButtonElement>(null);
   if (!store) return null;
-  if (isNewUser(store.data)) {
+  if (isNewUser(store)) {
     return (
       <header className="border-b border-line bg-bg">
         <div className="mx-auto flex min-h-16 w-full max-w-xl items-center justify-between gap-4 px-4">
