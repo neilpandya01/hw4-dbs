@@ -2,7 +2,7 @@
 
 A personal to-do list where every task belongs to a day. You add tasks to today or any day ahead and check them off. At a wrap-up time you choose, Dayplan asks what to do with anything left. Whatever you skip rolls over to the next day, so nothing uncomplete gets lost.
 
-It's built with Next.js and Tailwind CSS, and everything is saved in the browser with localStorage, with no accounts or database.
+It's built with Next.js and Tailwind CSS. You sign in with Clerk, and your tasks and settings are saved to your account in Supabase, so your list is there on any device and nobody else can see it. Today and At a Glance show the weather for your location or a city you pick, from Open-Meteo.
 
 ## Flows
 

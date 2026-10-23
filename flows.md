@@ -69,7 +69,7 @@ flowchart LR
 - "Pick a day for this task." / "Pick today or a later day." / "That's not a real date. Check the year."
 - A task already on that day, or very similar to one: a soft warning. Press Add again to keep both.
 - A date more than a year away: a soft warning to check the year.
-- The browser can't save, storage is full, or saved data can't be read: a banner says so.
+- Your list can't be loaded, or a change didn't save (no connection, or Supabase is unreachable): a banner says so, with a button to reload what's saved.
 
 ## Coming back
 
