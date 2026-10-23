@@ -1,0 +1,37 @@
+[dotenv@17.2.2] injecting env (0) from .env.local,.env -- tip: ⚙️  load multiple .env files with { path: ['.env.local', '.env'] }
+Running 1 test using 1 worker
+  ✘  1 [chromium] › e2e/rls.spec.ts:13:5 › two users each save a task, and neither can see the other's (28.7s)
+  1) [chromium] › e2e/rls.spec.ts:13:5 › two users each save a task, and neither can see the other's 
+    Error: Alice must not see Bob's task
+    expect(locator).toHaveCount(expected) failed
+    Locator:  getByRole('checkbox', { name: 'Bob private task 1792767323615', exact: true }).visible()
+    Expected: 0
+    Received: 1
+    Timeout:  15000ms
+    Call log:
+      - Alice must not see Bob's task getByRole('checkbox', { name: 'Bob private task 1792767323615', exact: true }).visible() with timeout 15000ms
+      - waiting for getByRole('checkbox', { name: 'Bob private task 1792767323615', exact: true }).visible()
+        34 × locator resolved to 1 element
+           - unexpected value "1"
+      35 |
+      36 |     // ...and not the other person's.
+    > 37 |     await expect(taskRow(alice, bobTask), "Alice must not see Bob's task").toHaveCount(0);
+         |                                                                            ^
+      38 |     await expect(taskRow(bob, aliceTask), "Bob must not see Alice's task").toHaveCount(0);
+      39 |   } finally {
+      40 |     // Leave the test accounts tidy for the next run.
+        at /home/neilpandya/DBS_A26/hw/hw4/hw4-dbs/e2e/rls.spec.ts:37:76
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/rls-two-users-each-save-a--3b700-neither-can-see-the-other-s-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/rls-two-users-each-save-a--3b700-neither-can-see-the-other-s-chromium/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+    Error Context: test-results/rls-two-users-each-save-a--3b700-neither-can-see-the-other-s-chromium/error-context.md
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results/rls-two-users-each-save-a--3b700-neither-can-see-the-other-s-chromium/trace.zip
+    Usage:
+        npx playwright show-trace test-results/rls-two-users-each-save-a--3b700-neither-can-see-the-other-s-chromium/trace.zip
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+  1 failed
+    [chromium] › e2e/rls.spec.ts:13:5 › two users each save a task, and neither can see the other's 

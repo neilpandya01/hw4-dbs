@@ -1,10 +1,19 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { isValidKey, toKey } from "./dates";
+import { toKey } from "./dates";
+import { supabase } from "./supabase";
 
-// Everything the app remembers lives under one localStorage key.
-// No database, no accounts: it stays on this device.
+// The only data layer. Tasks and settings belong to the signed-in person and live in Supabase
+// (tables `tasks` and `user_settings`; row-level security limits each person to their own rows).
+//
+// Every change shows on screen at once, then is saved in the background, one write at a time,
+// in order. Actions don't talk to the database themselves: after each change, the tasks that
+// differ from before are upserted and the missing ones deleted. So every action, and its Undo,
+// saves the same way.
+//
+// Two small pieces of UI memory stay on each device (localStorage), per AGENTS.md:
+// the wrap-up "Not now" and the one-time hint.
 
 export type Task = {
   id: string;
@@ -15,9 +24,9 @@ export type Task = {
   doneAt?: string;
   createdAt: string;
   /**
-   * Position within its day: lower comes first. New and moved tasks get the current time,
-   * which is always larger than any earlier value, so they land at the end of the day.
-   * Dragging renumbers a day 0, 1, 2… Missing on older data: falls back to createdAt.
+   * Position within its day (`position` in the database): lower comes first. New and moved tasks
+   * get the current time, which is always larger than any earlier value, so they land at the end
+   * of the day. Dragging renumbers a day 0, 1, 2…
    */
   order?: number;
   /**
@@ -29,99 +38,94 @@ export type Task = {
 };
 
 export type Data = {
-  version: 1;
   settings: { wrapUpTime: string | null };
+  /** This device only. */
   wrapUpDismissedOn: string | null;
   tasks: Task[];
-  /** Set when the welcome flow is finished or skipped. Missing on data saved before onboarding existed. */
+  /** Set when the welcome flow is finished or skipped. */
   onboarded?: boolean;
-  /** Show the one-time "here's how it works" hint until the first check-off or "Got it". */
+  /** This device only. Show the one-time "here's how it works" hint until the first check-off or "Got it". */
   showFirstHint?: boolean;
 };
 
-export type StorageStatus = "ok" | "unavailable" | "full" | "corrupt";
+/** save-failed: a change didn't reach the database. load-failed: the list couldn't be loaded. */
+export type StorageStatus = "ok" | "save-failed" | "load-failed";
 
 /** lastAddedId is memory-only: it marks a new task as "just added" for a few seconds. */
 export type Snapshot = { data: Data; storage: StorageStatus; lastAddedId?: string };
 
-const KEY = "todo:v1";
-const BACKUP_KEY = "todo:backup";
 export const DEFAULT_WRAP_UP = "18:00";
 
-const emptyData = (): Data => ({
-  version: 1,
-  settings: { wrapUpTime: null },
-  wrapUpDismissedOn: null,
-  tasks: [],
-});
+// ---- This device's UI memory ----
 
-const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+type DeviceUi = { wrapUpDismissedOn: string | null; showFirstHint: boolean };
+const uiKey = (id: string) => `dayplan:ui:${id}`;
 
-/**
- * Turn whatever was saved into valid Data, or null if it can't be trusted.
- * Small gaps (missing settings, an old field) are filled with defaults so nobody loses their list;
- * anything that would break a page (a task without a real day, say) means the data is unreadable.
- */
-function normalize(value: unknown): Data | null {
-  const v = value as Partial<Data> | null;
-  if (!v || typeof v !== "object" || v.version !== 1 || !Array.isArray(v.tasks)) return null;
-  const tasks: Task[] = [];
-  for (const raw of v.tasks as Partial<Task>[]) {
-    if (!raw || typeof raw.id !== "string" || typeof raw.title !== "string" || !isValidKey(String(raw.date))) return null;
-    tasks.push({
-      id: raw.id,
-      title: raw.title,
-      date: raw.date!,
-      done: raw.done === true,
-      doneAt: raw.done === true && typeof raw.doneAt === "string" && !isNaN(Date.parse(raw.doneAt)) ? raw.doneAt : undefined,
-      createdAt: typeof raw.createdAt === "string" && !isNaN(Date.parse(raw.createdAt)) ? raw.createdAt : new Date(0).toISOString(),
-      order: typeof raw.order === "number" && isFinite(raw.order) ? raw.order : undefined,
-      carriedFrom: typeof raw.carriedFrom === "string" && isValidKey(raw.carriedFrom) ? raw.carriedFrom : undefined,
-    });
+function loadUi(id: string): DeviceUi {
+  try {
+    const v = JSON.parse(localStorage.getItem(uiKey(id)) ?? "{}") as Partial<DeviceUi>;
+    return {
+      wrapUpDismissedOn: typeof v.wrapUpDismissedOn === "string" ? v.wrapUpDismissedOn : null,
+      showFirstHint: v.showFirstHint === true,
+    };
+  } catch {
+    return { wrapUpDismissedOn: null, showFirstHint: false };
   }
-  const wrapUpTime = v.settings?.wrapUpTime;
+}
+
+function saveUi(id: string, data: Data) {
+  try {
+    const ui: DeviceUi = { wrapUpDismissedOn: data.wrapUpDismissedOn, showFirstHint: !!data.showFirstHint };
+    localStorage.setItem(uiKey(id), JSON.stringify(ui));
+  } catch {
+    // Private mode or blocked storage: the hint or "Not now" may just show again. Nothing is lost.
+  }
+}
+
+// ---- Database rows ----
+
+type TaskRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  date: string;
+  done: boolean;
+  done_at: string | null;
+  position: number;
+  carried_from: string | null;
+  created_at: string;
+};
+
+function toTask(r: TaskRow): Task {
   return {
-    version: 1,
-    settings: { wrapUpTime: typeof wrapUpTime === "string" && TIME.test(wrapUpTime) ? wrapUpTime : null },
-    wrapUpDismissedOn: typeof v.wrapUpDismissedOn === "string" && isValidKey(v.wrapUpDismissedOn) ? v.wrapUpDismissedOn : null,
-    tasks,
-    onboarded: v.onboarded === true,
-    showFirstHint: v.showFirstHint === true,
+    id: r.id,
+    title: r.title,
+    date: r.date,
+    done: r.done,
+    doneAt: r.done_at ?? undefined,
+    createdAt: r.created_at,
+    order: Number(r.position),
+    carriedFrom: r.carried_from ?? undefined,
   };
 }
 
-function load(): Snapshot {
-  let raw: string | null;
-  try {
-    // Some browsers (private modes, blocked site data) throw on write, not read.
-    localStorage.setItem("todo:probe", "1");
-    localStorage.removeItem("todo:probe");
-    raw = localStorage.getItem(KEY);
-  } catch {
-    return { data: emptyData(), storage: "unavailable" };
-  }
-  if (raw === null) return { data: emptyData(), storage: "ok" };
-  try {
-    const data = normalize(JSON.parse(raw));
-    if (data) return { data, storage: "ok" };
-  } catch {}
-  // Unreadable: keep a copy so nothing is silently lost, then start fresh.
-  try {
-    localStorage.setItem(BACKUP_KEY, raw);
-    localStorage.removeItem(KEY);
-  } catch {}
-  return { data: emptyData(), storage: "corrupt" };
+function toRow(t: Task, userId: string): TaskRow {
+  return {
+    id: t.id,
+    user_id: userId,
+    title: t.title,
+    date: t.date,
+    done: t.done,
+    done_at: t.done ? (t.doneAt ?? new Date().toISOString()) : null,
+    position: Math.round(t.order ?? Date.parse(t.createdAt)),
+    carried_from: t.carriedFrom ?? null,
+    created_at: t.createdAt,
+  };
 }
 
-function save(data: Data): StorageStatus {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(data));
-    return "ok";
-  } catch (e) {
-    return e instanceof DOMException && e.name === "QuotaExceededError" ? "full" : "unavailable";
-  }
-}
+// ---- The store ----
 
+let userId: string | null = null;
 let snapshot: Snapshot | null = null;
 const listeners = new Set<() => void>();
 
@@ -129,44 +133,155 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
-function onStorage(e: StorageEvent) {
-  // Another tab changed the list: pick it up so tabs don't overwrite each other.
-  if (e.key === KEY) {
-    snapshot = load();
-    emit();
-  }
-}
-
 function subscribe(listener: () => void) {
   listeners.add(listener);
-  if (listeners.size === 1) window.addEventListener("storage", onStorage);
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) window.removeEventListener("storage", onStorage);
-  };
+  return () => listeners.delete(listener);
 }
 
-function getSnapshot(): Snapshot {
-  if (!snapshot) snapshot = load();
+function getSnapshot(): Snapshot | null {
   return snapshot;
 }
 
-/** null while rendering on the server or hydrating: show a skeleton, never a fake empty list. */
+/** null while signed out or still loading: show a skeleton, never a fake empty list. */
 export function useStore(): Snapshot | null {
   return useSyncExternalStore<Snapshot | null>(subscribe, getSnapshot, () => null);
 }
 
-function update(change: (data: Data) => Data) {
-  const current = getSnapshot();
-  const data = change(current.data);
-  const status = save(data);
-  // A save failure shows its notice right away; the "corrupt" notice stays until dismissed.
-  snapshot = { ...current, data, storage: status === "ok" && current.storage === "corrupt" ? "corrupt" : status };
+/** Bumped by every local change, so a reload that started earlier never overwrites it. */
+let changeCount = 0;
+let pendingWrites = 0;
+let queue: Promise<void> = Promise.resolve();
+let lastFetch = 0;
+
+function setStatus(storage: StorageStatus) {
+  if (snapshot && snapshot.storage !== storage) {
+    snapshot = { ...snapshot, storage };
+    emit();
+  }
+}
+
+/** Fetch this person's tasks and settings, unless a local change happened meanwhile. */
+async function fetchAll(id: string) {
+  const db = supabase();
+  if (!db) return failLoad(id);
+  const startedAt = changeCount;
+  lastFetch = Date.now();
+  const [tasks, settings] = await Promise.all([
+    db.from("tasks").select("*"),
+    db.from("user_settings").select("wrap_up_time, onboarded").maybeSingle(),
+  ]);
+  if (userId !== id) return; // signed out or switched people meanwhile
+  if (tasks.error || settings.error) return failLoad(id);
+  if (changeCount !== startedAt || pendingWrites > 0) return; // our own newer edits win; next reload catches up
+  const ui = loadUi(id);
+  snapshot = {
+    data: {
+      settings: { wrapUpTime: settings.data?.wrap_up_time ? String(settings.data.wrap_up_time).slice(0, 5) : null },
+      onboarded: settings.data?.onboarded === true,
+      tasks: (tasks.data as TaskRow[]).map(toTask),
+      wrapUpDismissedOn: ui.wrapUpDismissedOn,
+      showFirstHint: ui.showFirstHint,
+    },
+    storage: "ok",
+    lastAddedId: snapshot?.lastAddedId,
+  };
   emit();
+}
+
+function failLoad(id: string) {
+  if (snapshot) return setStatus("load-failed");
+  const ui = loadUi(id);
+  snapshot = {
+    data: { settings: { wrapUpTime: null }, tasks: [], wrapUpDismissedOn: ui.wrapUpDismissedOn, showFirstHint: ui.showFirstHint },
+    storage: "load-failed",
+  };
+  emit();
+}
+
+/** Called when the signed-in person changes (null on sign-out). */
+export async function loadStore(id: string | null) {
+  if (id === userId) return;
+  userId = id;
+  snapshot = null;
+  emit();
+  if (id) await fetchAll(id);
+}
+
+/**
+ * Pick up changes made on another device or tab: on returning to the tab, at most every 15 seconds,
+ * and only when nothing of ours is still saving.
+ */
+export async function refreshStore() {
+  if (!userId || pendingWrites > 0 || Date.now() - lastFetch < 15_000) return;
+  await fetchAll(userId);
+}
+
+/** "Try again" after a failed load or save: reload what the database actually has. */
+export function reloadStore() {
+  if (!userId) return;
+  lastFetch = 0;
+  pendingWrites = 0;
+  void fetchAll(userId);
+}
+
+/** Queue one database write. Writes run one at a time, in the order the changes were made. */
+function persist(write: (db: NonNullable<ReturnType<typeof supabase>>, id: string) => PromiseLike<{ error: unknown }>) {
+  const db = supabase();
+  const id = userId;
+  if (!db || !id) return setStatus("save-failed");
+  pendingWrites++;
+  queue = queue.then(async () => {
+    try {
+      const { error } = await write(db, id);
+      if (error && userId === id) setStatus("save-failed");
+    } catch {
+      if (userId === id) setStatus("save-failed");
+    } finally {
+      pendingWrites = Math.max(0, pendingWrites - 1);
+    }
+  });
+}
+
+/** Save what changed between two versions of the data. */
+function persistChanges(before: Data, after: Data) {
+  const old = new Map(before.tasks.map((t) => [t.id, t]));
+  // Actions keep unchanged tasks as the same object, so anything new or different is a changed task.
+  const changed = after.tasks.filter((t) => old.get(t.id) !== t);
+  const kept = new Set(after.tasks.map((t) => t.id));
+  const removed = before.tasks.filter((t) => !kept.has(t.id)).map((t) => t.id);
+  if (changed.length) persist((db, id) => db.from("tasks").upsert(changed.map((t) => toRow(t, id))));
+  if (removed.length) persist((db) => db.from("tasks").delete().in("id", removed));
+
+  if (before.settings.wrapUpTime !== after.settings.wrapUpTime || !!before.onboarded !== !!after.onboarded) {
+    persist((db, id) =>
+      db
+        .from("user_settings")
+        .upsert({ user_id: id, wrap_up_time: after.settings.wrapUpTime, onboarded: !!after.onboarded }, { onConflict: "user_id" }),
+    );
+  }
+  if (userId && (before.wrapUpDismissedOn !== after.wrapUpDismissedOn || before.showFirstHint !== after.showFirstHint)) {
+    saveUi(userId, after);
+  }
+}
+
+function update(change: (data: Data) => Data) {
+  if (!snapshot) return;
+  const before = snapshot.data;
+  const data = change(before);
+  if (data === before) return;
+  changeCount++;
+  snapshot = { ...snapshot, data };
+  emit();
+  persistChanges(before, data);
 }
 
 function updateTasks(change: (tasks: Task[]) => Task[]) {
   update((d) => ({ ...d, tasks: change(d.tasks) }));
+}
+
+/** The current data. Actions only run once the list has loaded. */
+function current(): Data {
+  return snapshot?.data ?? { settings: { wrapUpTime: null }, wrapUpDismissedOn: null, tasks: [] };
 }
 
 /** Every action returns an undo function for the toast. */
@@ -177,7 +292,7 @@ type Undo = () => void;
  * those back. Anything added or changed since, here or in another tab, is left alone.
  */
 function snapshotTasks(ids: string[]): Undo {
-  const before = getSnapshot().data.tasks.filter((t) => ids.includes(t.id));
+  const before = current().tasks.filter((t) => ids.includes(t.id));
   return () => updateTasks((tasks) => [...tasks.filter((t) => !ids.includes(t.id)), ...before]);
 }
 
@@ -195,8 +310,10 @@ export function addTask(title: string, date: string): { id: string; undo: Undo }
   const now = new Date();
   const task: Task = { id, title: title.trim(), date, done: false, createdAt: now.toISOString(), order: now.getTime() };
   updateTasks((tasks) => [...tasks, task]);
-  snapshot = { ...getSnapshot(), lastAddedId: id };
-  emit();
+  if (snapshot) {
+    snapshot = { ...snapshot, lastAddedId: id };
+    emit();
+  }
   setTimeout(() => {
     if (snapshot?.lastAddedId === id) {
       snapshot = { ...snapshot, lastAddedId: undefined };
@@ -285,8 +402,7 @@ export function deleteTasks(ids: string[]): Undo {
  * the day it was first planned for. Untouched, it rolls forward again tomorrow.
  */
 export function rollOver(today: string) {
-  const current = getSnapshot().data;
-  if (!current.tasks.some((t) => !t.done && t.date < today)) return;
+  if (!current().tasks.some((t) => !t.done && t.date < today)) return;
   update((d) => ({
     ...d,
     tasks: d.tasks.map((t) =>
@@ -322,24 +438,19 @@ export function reopenWrapUp() {
   update((d) => ({ ...d, wrapUpDismissedOn: null }));
 }
 
-export function dismissStorageNotice() {
-  const current = getSnapshot();
-  snapshot = { ...current, storage: "ok" };
-  emit();
-}
 
 // ---- Derived views (pure, so pages stay simple) ----
 
-/** Nothing saved and the welcome flow not done: send them to /welcome. */
-export function isNewUser(data: Data): boolean {
-  return !data.onboarded && data.tasks.length === 0;
+/** Nothing saved and the welcome flow not done: send them to /welcome. Never when the list failed to load. */
+export function isNewUser(store: Snapshot): boolean {
+  return store.storage !== "load-failed" && !store.data.onboarded && store.data.tasks.length === 0;
 }
 
 export function wrapUpTime(data: Data): string {
   return data.settings.wrapUpTime ?? DEFAULT_WRAP_UP;
 }
 
-/** A task's place in its day: its saved order, or when it was added for older data. */
+/** A task's place in its day: its saved order, or when it was added. */
 function rank(t: Task): number {
   return t.order ?? Date.parse(t.createdAt);
 }

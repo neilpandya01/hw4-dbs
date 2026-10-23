@@ -1,5 +1,6 @@
 "use client";
 
+import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { useRef, useState, type ReactNode } from "react";
 import { formatTime } from "@/lib/dates";
@@ -13,13 +14,24 @@ import { WrapUpEditor } from "./WrapUpSetting";
  *   │ Dayplan                [+ Add task]  │   (pinned)
  *   └ Today  At a Glance  Calendar  Done   ┘   (pinned)
  * The wrap-up time applies to every day, so it lives up here rather than on a single day.
- * Hidden until onboarding is finished, and while saved data loads, so a new person never sees it flash.
+ * Hidden while saved data loads. During onboarding only the name and account menu show,
+ * so someone new can still sign out.
  */
 export function AppHeader({ nav }: { nav: ReactNode }) {
   const store = useStore();
   const [editing, setEditing] = useState(false);
   const wrapUpButton = useRef<HTMLButtonElement>(null);
-  if (!store || isNewUser(store.data)) return null;
+  if (!store) return null;
+  if (isNewUser(store)) {
+    return (
+      <header className="border-b border-line bg-bg">
+        <div className="mx-auto flex min-h-16 w-full max-w-xl items-center justify-between gap-4 px-4">
+          <span className="text-xl font-semibold tracking-tight text-ink">Dayplan</span>
+          <UserButton />
+        </div>
+      </header>
+    );
+  }
 
   const time = formatTime(wrapUpTime(store.data));
 
@@ -67,9 +79,12 @@ export function AppHeader({ nav }: { nav: ReactNode }) {
             <Link href="/" className="text-xl font-semibold tracking-tight text-ink">
               Dayplan
             </Link>
-            <Link href="/add" className={`${buttonClass()} shrink-0`}>
-              + Add task
-            </Link>
+            <div className="flex shrink-0 items-center gap-3">
+              <Link href="/add" className={buttonClass()}>
+                + Add task
+              </Link>
+              <UserButton />
+            </div>
           </div>
           {nav}
         </div>
