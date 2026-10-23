@@ -19,6 +19,8 @@ export type TaskGroup = {
   pinned?: Task[];
   pinnedMeta?: (task: Task) => ReactNode;
   href?: string;
+  /** Shown at the right end of the heading, e.g. that day's weather. */
+  aside?: ReactNode;
   /** Extra text under each task. */
   meta?: (task: Task) => ReactNode;
   /** Shown under the group's list, e.g. "+ Add task to Tomorrow". */
@@ -153,15 +155,18 @@ export function ReorderableGroups({
             className="flex flex-col gap-3"
           >
             {showHeadings && (
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
-                {group.href ? (
-                  <Link href={group.href} className="hover:text-ink hover:underline">
-                    {group.title}
-                  </Link>
-                ) : (
-                  group.title
-                )}
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">
+                  {group.href ? (
+                    <Link href={group.href} className="hover:text-ink hover:underline">
+                      {group.title}
+                    </Link>
+                  ) : (
+                    group.title
+                  )}
+                </h2>
+                {group.aside}
+              </div>
             )}
             <ul className="flex flex-col gap-2">
               {(group.pinned ?? []).map((task) => (

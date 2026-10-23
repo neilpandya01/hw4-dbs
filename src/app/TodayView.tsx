@@ -7,6 +7,7 @@ import { FromEarlier } from "@/components/FromEarlier";
 import { EmptyState, ListSkeleton, PageHeader, Section } from "@/components/Page";
 import { QuickAdd } from "@/components/QuickAdd";
 import { ReorderableGroups } from "@/components/ReorderableGroups";
+import { WeatherToday } from "@/components/Weather";
 import { WrapUpCard } from "@/components/WrapUpCard";
 import { useClock } from "@/lib/clock";
 import { addDays, formatDay, minutesOf } from "@/lib/dates";
@@ -50,6 +51,8 @@ export function TodayView() {
           </Button>
         )}
       </PageHeader>
+
+      <WeatherToday today={today} minutes={clock.minutes} />
 
       <FirstHint data={data} />
 

@@ -4,6 +4,8 @@ import { FirstHint } from "@/components/FirstHint";
 import { InlineAdd } from "@/components/InlineAdd";
 import { ListSkeleton, PageHeader } from "@/components/Page";
 import { ReorderableGroups, type TaskGroup } from "@/components/ReorderableGroups";
+import { useForecast, WeatherChip } from "@/components/Weather";
+import { dayForecast } from "@/lib/weather";
 import { useClock } from "@/lib/clock";
 import { addDays, ageLabel, dayName, formatDay } from "@/lib/dates";
 import { fromEarlier, isCarried, plannedDay, sortForList, useStore, type Task } from "@/lib/store";
@@ -15,6 +17,7 @@ import { fromEarlier, isCarried, plannedDay, sortForList, useStore, type Task } 
 export function GlanceView() {
   const store = useStore();
   const clock = useClock();
+  const forecast = useForecast();
   if (!store || !clock) return <ListSkeleton />;
 
   const { today } = clock;
@@ -23,7 +26,10 @@ export function GlanceView() {
   const later = [...new Set(open.filter((t) => t.date > tomorrow).map((t) => t.date))].sort();
   const dayGroup = (day: string): TaskGroup => {
     const name = dayName(day, today);
+    // Only days inside the 7-day forecast get weather; later days just show their tasks.
+    const weather = forecast && dayForecast(forecast, day);
     return {
+      aside: weather ? <WeatherChip day={weather} /> : undefined,
       key: day,
       title: name === formatDay(day) ? name : `${name} · ${formatDay(day)}`,
       droppable: true,
