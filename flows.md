@@ -4,18 +4,27 @@ Dayplan's three flows: the first visit, the main task, and coming back.
 
 ## First visit
 
-> **I open Dayplan with nothing saved → I read what it's for → I set when I'm usually done for the day → I add my first task by tapping an example, for today or another day → I land on Today (or At a Glance, for a later day), with a one-time hint on how it works.**
+> **I open Dayplan with nothing saved → I read what it's for → I set when I'm usually done for the day → I choose where my weather comes from → I add my first task by tapping an example, for today or another day → I land on Today (or At a Glance, for a later day), with a one-time hint on how it works.**
 
 ```mermaid
 flowchart TD
   A([Open Dayplan]) --> B{Anything saved?}
   B -- Yes --> T[Today, no onboarding]
-  B -- No --> W0["/welcome step 1 of 3: overview, what Dayplan is and how it works"]
-  W0 -- Get started --> W1["Step 2 of 3: When do you wrap up?"]
+  B -- No --> W0["/welcome step 1 of 4: overview, what Dayplan is and how it works"]
+  W0 -- Get started --> W1["Step 2 of 4: When do you wrap up?"]
   W1 -- Back --> W0
   W1 -- error next to the question --> W1
-  W1 -- Continue: time saved --> W2["Step 3 of 3: Add your first task (tap an example or type)"]
-  W2 -- Back --> W1
+  W1 -- Continue: time saved --> WX["Step 3 of 4: Show the weather for your day?"]
+  WX -- Back --> W1
+  WX -- "Use my location: browser allows" --> WS[(Saved: location, rounded to ~1 km)]
+  WX -- "Browser blocks, or Pick a city instead" --> WC["Which city's weather? (search)"]
+  WC -- "no match / search down: error under the field" --> WC
+  WC -- Pick a result --> WP[(Saved: that city)]
+  WC -- Skip weather --> WO[(Saved: off)]
+  WS --> W2["Step 4 of 4: Add your first task (tap an example or type)"]
+  WP --> W2
+  WO --> W2
+  W2 -- Back --> WX
   W2 -- error next to field, input kept --> W2
   W2 -- "I'll add tasks later" --> E[Today, no hint]
   W2 -- Add, for Today --> H[Today + one-time hint]
@@ -80,3 +89,26 @@ flowchart TD
   E -- Yes --> F["They roll over onto today: 'Rolled over · N' on Today"]
   F -- Move all to today / Check off / Edit --> P
 ```
+
+## Weather
+
+> **I open Today → I see the weather where I am (or my chosen city) → the week ahead sits next to each day on At a Glance → it stays current while I use the app, without asking the API more than it needs to.**
+
+Where it comes from is chosen once, in onboarding (or on Today, for anyone who signed up before weather existed), and saved in Supabase (`user_settings`):
+- **Location:** this device's position when the browser allows it; otherwise the last saved coordinates.
+- **City:** the searched city, always.
+- **Off:** no weather anywhere.
+
+**When it's fetched** (from the browser; Open-Meteo needs no key, and each person's requests count against their own limit):
+- When the app opens.
+- On a page switch, on returning to the tab, and on a check every 5 minutes, but only if the forecast is 30+ minutes old.
+- Never while the tab is in the background. After a failed call, not again for 5 minutes.
+
+**States**
+- Loading: a placeholder the size of the card.
+- Not chosen yet, or "location" with no position shared and none saved: the card asks (location → city → off).
+- Off: nothing shown.
+- API down: "Weather is unavailable right now. Your tasks are fine." If an earlier forecast exists, it stays, with "Couldn't refresh."
+- City search: "No places match…" when nothing is found; "City search isn't working right now…" when the API is down.
+- Settings can't load (Supabase unreachable): a short message; onboarding lets you continue without weather.
+

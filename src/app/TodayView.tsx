@@ -52,7 +52,7 @@ export function TodayView() {
         )}
       </PageHeader>
 
-      <WeatherToday today={today} minutes={clock.minutes} />
+      <WeatherToday today={today} />
 
       <FirstHint data={data} />
 

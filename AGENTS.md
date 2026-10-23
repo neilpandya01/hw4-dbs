@@ -59,13 +59,16 @@ Index on `(user_id, date)`: every view loads tasks by person and day.
 - `src/lib/store.ts`: the only data layer. Key `todo:v1`; `useStore()`; every action (add, toggle, move, place, delete) returns an Undo that restores only the tasks it touched.
 - `src/lib/dates.ts`: local `YYYY-MM-DD` day keys. Never use `toISOString()` for a day.
 - `src/lib/validate.ts`: task errors and soft warnings (similar names, far-future dates). `src/lib/clock.ts`: current day and minute, ticking on the minute.
-- Routes: `/` Today, `/add`, `/glance` At a Glance, `/calendar`, `/done`, `/welcome` onboarding (`?step=time|task`).
+- `src/lib/supabase.ts`: the one browser Supabase client; sends the Clerk session token (set by `WeatherSync`). Publishable key only.
+- Weather: `src/lib/weather.ts` (Open-Meteo calls and parsing, icons' `Sky`), `src/lib/weatherSettings.ts` (the person's `user_settings` weather columns), `src/lib/forecast.ts` (the shared forecast and when to refetch), `src/components/WeatherSync.tsx` (in the layout: loads settings, triggers checks), `WeatherSetup.tsx` (location → city → off), `Weather.tsx` (Today card, At a Glance chip), `WeatherIcon.tsx`.
+- Routes: `/` Today, `/add`, `/glance` At a Glance, `/calendar`, `/done`, `/welcome` onboarding (`?step=time|weather|task`).
 - `src/components`: shared UI. Reuse it instead of one-off markup.
 
 ## How it behaves
 - **Onboarding is required.** `OnboardingGate` sends new users to `/welcome`; `/welcome` sends finished users on.
 - **Rollover.** `DayRollover` calls `rollOver(today)`: unfinished past tasks move to today with `carriedFrom` set to their original day. Today shows them in a "Rolled over" group (`FromEarlier`); At a Glance and Calendar pin them at the top of today (`pinned` in `ReorderableGroups`).
 - **Order.** Each task has a saved `order`. New and moved tasks go last in their day, never alphabetical. Rankable lists use `ReorderableGroups` so all three views stay in sync.
+- **Weather.** Fetched in the browser from Open-Meteo (no key; per-person rate limits). On app open; then on page switch, tab return, or a 5-minute check, only if 30+ minutes old; never in a background tab; 5 minutes' wait after a failure. Flow and states are in `flows.md` → Weather.
 - **Feedback.** Errors sit under their field, say what to do next, and keep what was typed. Toasts with Undo only for moves and deletes. Bulk deletes confirm first (`ConfirmButton`).
 
 ## Next.js gotchas here

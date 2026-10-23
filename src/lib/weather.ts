@@ -1,26 +1,23 @@
-import { addDays } from "./dates";
-
-// Weather shapes and a PLACEHOLDER forecast, so the UI can be designed before the real
-// Open-Meteo call exists. Field names follow Open-Meteo's daily/hourly response
-// (weather_code, temperature_2m_max/min, precipitation_probability_max), so swapping in
-// the real data later only replaces `sampleForecast`.
+// Weather from Open-Meteo (https://open-meteo.com): free, no API key. Called from the browser,
+// so each person's requests count against their own rate limit and no key needs hiding.
+// The forecast is never saved anywhere; only the location is (see weatherSettings.ts).
 
 /** What an icon draws. Derived from Open-Meteo's WMO weather code, plus day or night. */
 export type Sky = "clear" | "clear-night" | "partly" | "partly-night" | "cloudy" | "fog" | "drizzle" | "rain" | "snow" | "storm";
 
 export type DayForecast = {
-  date: string; // YYYY-MM-DD, same keys as src/lib/dates.ts
+  date: string; // YYYY-MM-DD in the forecast place's own time zone
   code: number; // WMO weather code
   high: number; // °F
   low: number; // °F
   precipChance: number; // 0–100
 };
 
-export type HourForecast = { minutes: number; code: number; temp: number }; // minutes since local midnight
+/** minutes: since local midnight. */
+export type HourForecast = { minutes: number; code: number; temp: number; night: boolean };
 
 export type Forecast = {
-  place: string;
-  current: { code: number; temp: number; feelsLike: number; wind: number };
+  current: { code: number; temp: number; feelsLike: number; wind: number; night: boolean };
   hours: HourForecast[];
   days: DayForecast[];
 };
@@ -62,50 +59,106 @@ export function skyLabel(sky: Sky): string {
   return LABELS[sky];
 }
 
-/** Rough local night, until real sunrise and sunset come from the API. */
-export function isNight(minutes: number): boolean {
-  return minutes < 6 * 60 || minutes >= 19 * 60;
-}
-
 /** "3 PM", "Now" is handled by the caller. */
 export function formatHour(minutes: number): string {
   const h = Math.floor(minutes / 60) % 24;
   return `${h % 12 || 12} ${h < 12 ? "AM" : "PM"}`;
 }
 
-// ---- Placeholder data ----
-
-/** A fixed week, by days from today, chosen to show every kind of weather. */
-const SAMPLE_WEEK: Omit<DayForecast, "date">[] = [
-  { code: 2, high: 64, low: 51, precipChance: 10 },
-  { code: 63, high: 58, low: 49, precipChance: 80 },
-  { code: 0, high: 67, low: 50, precipChance: 0 },
-  { code: 3, high: 61, low: 52, precipChance: 20 },
-  { code: 95, high: 63, low: 54, precipChance: 70 },
-  { code: 45, high: 55, low: 44, precipChance: 10 },
-  { code: 73, high: 39, low: 30, precipChance: 60 },
-];
-
-/** A sample forecast for the week starting `today`. Not real weather. */
-export function sampleForecast(today: string, minutes: number): Forecast {
-  const days = SAMPLE_WEEK.map((d, i) => ({ ...d, date: addDays(today, i) }));
-  const nextHour = (Math.floor(minutes / 60) + 1) * 60;
-  const hourCodes = [2, 2, 3, 61, 3];
-  const hours = hourCodes.map((code, i) => {
-    const at = nextHour + i * 3 * 60;
-    // Warmest mid-afternoon, coolest before dawn.
-    const temp = Math.round(57.5 + 6.5 * Math.cos(((at / 60 - 15) / 24) * 2 * Math.PI));
-    return { minutes: at % (24 * 60), code, temp };
-  });
-  return {
-    place: "Chicago, Illinois",
-    current: { code: 2, temp: 62, feelsLike: 60, wind: 9 },
-    hours,
-    days,
-  };
-}
-
 /** The forecast for one day, if it's within the forecast range. */
 export function dayForecast(forecast: Forecast, day: string): DayForecast | undefined {
   return forecast.days.find((d) => d.date === day);
+}
+
+// ---- Open-Meteo calls ----
+
+const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
+const GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
+
+/** The parts of Open-Meteo's forecast response Dayplan reads. */
+type ForecastResponse = {
+  current: { time: string; temperature_2m: number; apparent_temperature: number; weather_code: number; wind_speed_10m: number; is_day: number };
+  hourly: { time: string[]; temperature_2m: number[]; weather_code: number[]; is_day: number[] };
+  daily: {
+    time: string[];
+    weather_code: number[];
+    temperature_2m_max: number[];
+    temperature_2m_min: number[];
+    precipitation_probability_max: (number | null)[];
+  };
+};
+
+/** Seven days for one place, in °F and mph, in that place's own time zone. Throws when the API is down. */
+export async function fetchForecast(lat: number, lon: number, signal?: AbortSignal): Promise<Forecast> {
+  const params = new URLSearchParams({
+    latitude: String(lat),
+    longitude: String(lon),
+    current: "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day",
+    hourly: "temperature_2m,weather_code,is_day",
+    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+    timezone: "auto",
+    forecast_days: "7",
+    temperature_unit: "fahrenheit",
+    wind_speed_unit: "mph",
+  });
+  const res = await fetch(`${FORECAST_URL}?${params}`, { signal });
+  if (!res.ok) throw new Error(`Open-Meteo forecast: HTTP ${res.status}`);
+  return toForecast((await res.json()) as ForecastResponse);
+}
+
+function toForecast(r: ForecastResponse): Forecast {
+  const c = r.current;
+  // The next five 3-hour slots after the current hour ("2026-10-22T20:30" → the 20:00 entry).
+  const now = r.hourly.time.indexOf(`${c.time.slice(0, 13)}:00`);
+  const hours: HourForecast[] = [];
+  for (let i = now + 1; now >= 0 && i < r.hourly.time.length && hours.length < 5; i += 3) {
+    const [h, m] = r.hourly.time[i].slice(11, 16).split(":").map(Number);
+    hours.push({
+      minutes: h * 60 + m,
+      code: r.hourly.weather_code[i],
+      temp: Math.round(r.hourly.temperature_2m[i]),
+      night: r.hourly.is_day[i] === 0,
+    });
+  }
+  return {
+    current: {
+      code: c.weather_code,
+      temp: Math.round(c.temperature_2m),
+      feelsLike: Math.round(c.apparent_temperature),
+      wind: Math.round(c.wind_speed_10m),
+      night: c.is_day === 0,
+    },
+    hours,
+    days: r.daily.time.map((date, i) => ({
+      date,
+      code: r.daily.weather_code[i],
+      high: Math.round(r.daily.temperature_2m_max[i]),
+      low: Math.round(r.daily.temperature_2m_min[i]),
+      precipChance: r.daily.precipitation_probability_max[i] ?? 0,
+    })),
+  };
+}
+
+export type Place = { id: number; label: string; detail: string; lat: number; lon: number };
+
+/**
+ * Search cities by name. Returns [] when nothing matches (Open-Meteo then omits `results`).
+ * Throws when the API is down, so the caller can tell "nothing found" from "not working".
+ */
+export async function searchPlaces(name: string, signal?: AbortSignal): Promise<Place[]> {
+  const params = new URLSearchParams({ name, count: "6", language: "en", format: "json" });
+  const res = await fetch(`${GEOCODE_URL}?${params}`, { signal });
+  if (!res.ok) throw new Error(`Open-Meteo geocoding: HTTP ${res.status}`);
+  const body = (await res.json()) as {
+    results?: { id: number; name: string; admin1?: string; country?: string; latitude: number; longitude: number }[];
+  };
+  return (body.results ?? []).map((p) => ({
+    id: p.id,
+    // Saved and shown on Today, e.g. "Chicago, Illinois".
+    label: [p.name, p.admin1 ?? p.country].filter(Boolean).join(", "),
+    // Only to tell same-named places apart in the list.
+    detail: [p.admin1, p.country].filter(Boolean).join(", "),
+    lat: p.latitude,
+    lon: p.longitude,
+  }));
 }

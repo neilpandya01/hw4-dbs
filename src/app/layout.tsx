@@ -10,6 +10,7 @@ import { Nav, NavTabs } from "@/components/Nav";
 import { SignedInOnly } from "@/components/SignedInOnly";
 import { StorageBanner } from "@/components/StorageBanner";
 import { ToastProvider } from "@/components/Toast";
+import { WeatherSync } from "@/components/WeatherSync";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -58,6 +59,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 {/* Reads the URL, so it needs its own Suspense boundary under Cache Components. */}
                 <Suspense fallback={null}>
                   <OnboardingGate />
+                </Suspense>
+                {/* Loads weather settings and keeps the forecast fresh. Reads the URL, so it has its own Suspense. */}
+                <Suspense fallback={null}>
+                  <WeatherSync />
                 </Suspense>
               </SignedInOnly>
               {children}
