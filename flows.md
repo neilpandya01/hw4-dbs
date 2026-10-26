@@ -20,7 +20,8 @@ flowchart TD
   WX -- "Browser blocks, or Pick a city instead" --> WC["Which city's weather? (search)"]
   WC -- "no match / search down: error under the field" --> WC
   WC -- Pick a result --> WP[(Saved: that city)]
-  WC -- Skip weather --> WO[(Saved: off)]
+  WC -- Skip weather --> WO[(Saved: off, no weather shown anywhere)]
+  WX -- "Skip weather (no location or city needed)" --> WO
   WS --> W2["Step 4 of 4: Add your first task (tap an example or type)"]
   WP --> W2
   WO --> W2
@@ -30,6 +31,8 @@ flowchart TD
   W2 -- Add, for Today --> H[Today + one-time hint]
   W2 -- Add, for Tomorrow or another day --> D[At a Glance + one-time hint]
 ```
+
+Each step has its own URL (`/welcome?step=overview|time|weather|task`), so Back goes to the previous step. Opening or reloading `/welcome` at any URL lands on the step you'd reached (the first one not yet answered), never past an unanswered step.
 
 ## Main task
 

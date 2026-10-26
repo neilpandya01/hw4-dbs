@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { ListSkeleton } from "@/components/Page";
 import type { WrapUpDraft } from "@/components/WrapUpTimeField";
 import { useClock } from "@/lib/clock";
@@ -22,7 +22,9 @@ type Step = (typeof STEPS)[number];
  *   2. /welcome?step=time   Set the time you usually wrap up (required).
  *   3. /welcome?step=weather  Weather: your location, or a city if you'd rather not share it, or none.
  *   4. /welcome?step=task   Add a first task (by example), for today or another day, or add later.
- * Each step has its own URL, so the browser's Back button goes to the previous step.
+ * Each step has its own URL (step 1 is ?step=overview), so Back and the browser's Back button go to the
+ * previous step. Opening or reloading /welcome at any URL lands on the step you'd reached; after that,
+ * the URL decides (Back can go to earlier steps, but never past an unanswered one).
  * Someone who has already finished onboarding is sent on: to their new task's list right
  * after finishing, or to Today if they open /welcome later.
  */
@@ -33,6 +35,8 @@ export function WelcomeFlow() {
   const requested = useSearchParams().get("step");
   const onboarded = !!store?.data.onboarded;
   const weather = useWeatherSettings();
+  // The first time this page shows (open or reload), go to the step reached, whatever the URL says.
+  const [arrived, setArrived] = useState(false);
 
   // Finished: leave /welcome. Just after adding a first task, go where that task lives.
   const justAdded = store?.lastAddedId ? store.data.tasks.find((t) => t.id === store.lastAddedId) : undefined;
@@ -47,18 +51,54 @@ export function WelcomeFlow() {
   // Weather is answered once a choice is saved (location, city, or off). If settings can't be
   // reached at all, the weather step says so and lets them continue, so it counts as answered.
   const weatherAnswered = weather.status === "error" || weather.settings.mode !== null;
-  // Later steps need the earlier answers; without a step in the URL, resume where they left off.
-  let step: Step = STEPS.includes(requested as Step)
-    ? (requested as Step)
-    : !timeSaved
-      ? "overview"
-      : weatherAnswered
-        ? "task"
-        : "weather";
+  // Where they'd reached: the first step still to answer. The overview has nothing to save, so someone
+  // already on the time step (by URL) stays there.
+  const reached: Step = !timeSaved
+    ? requested === "time" || requested === "weather" || requested === "task"
+      ? "time"
+      : "overview"
+    : weatherAnswered
+      ? "task"
+      : "weather";
+  const asked = STEPS.includes(requested as Step) ? (requested as Step) : null;
+  // On arrival (or with no step in the URL) resume; afterwards follow the URL, never past an unanswered step.
+  let step: Step = !arrived || !asked ? reached : asked;
   if ((step === "weather" || step === "task") && !timeSaved) step = "time";
   if (step === "task" && !weatherAnswered) step = "weather";
 
-  return <Flow step={step} savedTime={store.data.settings.wrapUpTime} today={clock.today} />;
+  return (
+    <Arrive
+      step={step}
+      urlStep={asked}
+      onArrived={setArrived}
+    >
+      <Flow step={step} savedTime={store.data.settings.wrapUpTime} today={clock.today} />
+    </Arrive>
+  );
+}
+
+/** Keeps the URL in step with what's shown (replace, so Back isn't cluttered), and marks arrival as done. */
+function Arrive({
+  step,
+  urlStep,
+  onArrived,
+  children,
+}: {
+  step: Step;
+  urlStep: Step | null;
+  onArrived: (arrived: true) => void;
+  children: ReactNode;
+}) {
+  const router = useRouter();
+  useLayoutEffect(() => {
+    onArrived(true);
+    if (urlStep !== step) router.replace(stepHref(step), { scroll: false });
+  }, [step, urlStep, onArrived, router]);
+  return children;
+}
+
+function stepHref(step: Step) {
+  return `/welcome?step=${step}`;
 }
 
 function Flow({ step, savedTime, today }: { step: Step; savedTime: string | null; today: string }) {
@@ -75,7 +115,7 @@ function Flow({ step, savedTime, today }: { step: Step; savedTime: string | null
   }, [step]);
 
   function go(next: Step) {
-    router.push(next === "overview" ? "/welcome" : `/welcome?step=${next}`, { scroll: false });
+    router.push(stepHref(next), { scroll: false });
   }
 
   return (

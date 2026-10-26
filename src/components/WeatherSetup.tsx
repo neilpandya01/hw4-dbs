@@ -14,7 +14,8 @@ const LOCATE_TIMEOUT_MS = 10_000;
  * Where should weather come from? Asked in this order:
  *   1. "Use my location": the browser asks; on yes, save it (rounded to about 1 km).
  *   2. Location refused or unavailable (or "Pick a city instead"): search for a city and pick one.
- *   3. No city either ("Skip weather"): saved as off, so we don't ask again.
+ *   3. No weather at all ("Skip weather", offered right away and after a refused location): saved as off,
+ *      so we don't ask again and the weather card and chips stay hidden.
  * Used as an onboarding step, inside the Today weather card for anyone who hasn't chosen yet,
  * and as the header's weather setting ("settings"), where you can change or turn off your choice any time.
  */
@@ -261,8 +262,8 @@ export function WeatherSetup({
             Continue without weather
           </Button>
         ) : (
-          // Only after location was refused: saying no to a city too means no weather.
-          phase === "city" && <Button
+          // Weather is optional: skipping saves "off" without asking for a location or a city.
+          <Button
             variant="ghost"
             disabled={!!busy}
             onClick={() => void save({ mode: "off", lat: null, lon: null, placeName: null })}
