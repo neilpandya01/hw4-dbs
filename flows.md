@@ -94,7 +94,7 @@ flowchart TD
 
 > **I open Today → I see the weather where I am (or my chosen city) → the week ahead sits next to each day on At a Glance → it stays current while I use the app, without asking the API more than it needs to.**
 
-Where it comes from is chosen once, in onboarding (or on Today, for anyone who signed up before weather existed), and saved in Supabase (`user_settings`):
+Where it comes from is chosen in onboarding (or on Today, for anyone who signed up before weather existed), can be changed or turned off any time from **Weather · Change** in the header strip, and is saved in Supabase (`user_settings`):
 - **Location:** this device's position when the browser allows it; otherwise the last saved coordinates.
 - **City:** the searched city, always.
 - **Off:** no weather anywhere.
