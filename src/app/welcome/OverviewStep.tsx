@@ -35,7 +35,7 @@ export function OverviewStep({
             </li>
           ))}
         </ol>
-        <p className="text-sm text-muted">Everything is saved on this device. No account needed.</p>
+        <p className="text-sm text-muted">Everything is saved to your account, so your list is there on any device.</p>
       </section>
       <Button className="self-start" onClick={onDone}>
         Get started

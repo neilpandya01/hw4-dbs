@@ -12,7 +12,7 @@ export function OnboardingGate() {
   const store = useStore();
   const pathname = usePathname();
   const router = useRouter();
-  const mustOnboard = !!store && isNewUser(store.data) && pathname !== "/welcome";
+  const mustOnboard = !!store && isNewUser(store) && pathname !== "/welcome";
 
   useEffect(() => {
     if (mustOnboard) router.replace("/welcome");

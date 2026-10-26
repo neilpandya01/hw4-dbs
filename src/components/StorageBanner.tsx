@@ -1,36 +1,24 @@
 "use client";
 
-import Link from "next/link";
-import { dismissStorageNotice, useStore } from "@/lib/store";
+import { reloadStore, useStore } from "@/lib/store";
 import { Button } from "./Button";
 
-/** App-wide notice when saving to this device isn't working. */
+/** App-wide notice when your list can't be loaded from, or saved to, your account. */
 export function StorageBanner() {
   const store = useStore();
   if (!store || store.storage === "ok") return null;
 
   const messages = {
-    unavailable: <>This browser isn&rsquo;t saving. Tasks will disappear when you close the tab.</>,
-    full: (
-      <>
-        Storage is full. Clear finished tasks on the{" "}
-        <Link href="/done" className="font-semibold underline">
-          Done page
-        </Link>{" "}
-        to keep saving.
-      </>
-    ),
-    corrupt: <>We couldn&rsquo;t read your saved tasks, so we started a fresh list.</>,
+    "load-failed": "Couldn't load your tasks. Check your connection, then try again.",
+    "save-failed": "Your last change didn't save. Check your connection, then reload your list to see what's saved.",
   };
 
   return (
     <div role="alert" className="flex items-start justify-between gap-3 rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">
       <p>{messages[store.storage]}</p>
-      {store.storage === "corrupt" && (
-        <Button variant="ghost" size="sm" onClick={dismissStorageNotice}>
-          OK
-        </Button>
-      )}
+      <Button variant="ghost" size="sm" onClick={reloadStore}>
+        {store.storage === "load-failed" ? "Try again" : "Reload list"}
+      </Button>
     </div>
   );
 }

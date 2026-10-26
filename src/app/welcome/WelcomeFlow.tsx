@@ -7,18 +7,21 @@ import type { WrapUpDraft } from "@/components/WrapUpTimeField";
 import { useClock } from "@/lib/clock";
 import { addedHref } from "@/lib/dates";
 import { useStore } from "@/lib/store";
+import { useWeatherSettings } from "@/lib/weatherSettings";
+import { WeatherSetup } from "@/components/WeatherSetup";
 import { FirstTaskStep } from "./FirstTaskStep";
 import { OverviewStep } from "./OverviewStep";
 import { WrapUpStep } from "./WrapUpStep";
 
-const STEPS = ["overview", "time", "task"] as const;
+const STEPS = ["overview", "time", "weather", "task"] as const;
 type Step = (typeof STEPS)[number];
 
 /**
  * The first visit, required for anyone new:
  *   1. /welcome             Read the overview: what Dayplan is and how it works.
  *   2. /welcome?step=time   Set the time you usually wrap up (required).
- *   3. /welcome?step=task   Add a first task (by example), for today or another day, or add later.
+ *   3. /welcome?step=weather  Weather: your location, or a city if you'd rather not share it, or none.
+ *   4. /welcome?step=task   Add a first task (by example), for today or another day, or add later.
  * Each step has its own URL, so the browser's Back button goes to the previous step.
  * Someone who has already finished onboarding is sent on: to their new task's list right
  * after finishing, or to Today if they open /welcome later.
@@ -29,6 +32,7 @@ export function WelcomeFlow() {
   const router = useRouter();
   const requested = useSearchParams().get("step");
   const onboarded = !!store?.data.onboarded;
+  const weather = useWeatherSettings();
 
   // Finished: leave /welcome. Just after adding a first task, go where that task lives.
   const justAdded = store?.lastAddedId ? store.data.tasks.find((t) => t.id === store.lastAddedId) : undefined;
@@ -37,12 +41,22 @@ export function WelcomeFlow() {
     if (onboarded) router.replace(target);
   }, [onboarded, target, router]);
 
-  if (!store || !clock || onboarded) return <ListSkeleton />;
+  if (!store || !clock || onboarded || weather.status === "loading") return <ListSkeleton />;
 
   const timeSaved = !!store.data.settings.wrapUpTime;
-  // Step 3 needs a wrap-up time; without a step in the URL, resume where they left off.
-  let step: Step = STEPS.includes(requested as Step) ? (requested as Step) : timeSaved ? "task" : "overview";
-  if (step === "task" && !timeSaved) step = "time";
+  // Weather is answered once a choice is saved (location, city, or off). If settings can't be
+  // reached at all, the weather step says so and lets them continue, so it counts as answered.
+  const weatherAnswered = weather.status === "error" || weather.settings.mode !== null;
+  // Later steps need the earlier answers; without a step in the URL, resume where they left off.
+  let step: Step = STEPS.includes(requested as Step)
+    ? (requested as Step)
+    : !timeSaved
+      ? "overview"
+      : weatherAnswered
+        ? "task"
+        : "weather";
+  if ((step === "weather" || step === "task") && !timeSaved) step = "time";
+  if (step === "task" && !weatherAnswered) step = "weather";
 
   return <Flow step={step} savedTime={store.data.settings.wrapUpTime} today={clock.today} />;
 }
@@ -79,11 +93,14 @@ function Flow({ step, savedTime, today }: { step: Step; savedTime: string | null
           savedTime={savedTime}
           draft={draft}
           onDraft={setDraft}
-          onDone={() => go("task")}
+          onDone={() => go("weather")}
           onBack={() => go("overview")}
         />
       )}
-      {step === "task" && <FirstTaskStep headingRef={heading} today={today} onBack={() => go("time")} />}
+      {step === "weather" && (
+        <WeatherSetup variant="onboarding" headingRef={heading} onDone={() => go("task")} onBack={() => go("time")} />
+      )}
+      {step === "task" && <FirstTaskStep headingRef={heading} today={today} onBack={() => go("weather")} />}
     </div>
   );
 }

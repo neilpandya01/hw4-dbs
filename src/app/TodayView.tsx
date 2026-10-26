@@ -7,6 +7,7 @@ import { FromEarlier } from "@/components/FromEarlier";
 import { EmptyState, ListSkeleton, PageHeader, Section } from "@/components/Page";
 import { QuickAdd } from "@/components/QuickAdd";
 import { ReorderableGroups } from "@/components/ReorderableGroups";
+import { WeatherToday } from "@/components/Weather";
 import { WrapUpCard } from "@/components/WrapUpCard";
 import { useClock } from "@/lib/clock";
 import { addDays, formatDay, minutesOf } from "@/lib/dates";
@@ -17,7 +18,7 @@ export function TodayView() {
   const store = useStore();
   const clock = useClock();
   // Someone new is sent to /welcome by OnboardingGate; show the skeleton, not an empty list, meanwhile.
-  const isNew = !!store && isNewUser(store.data);
+  const isNew = !!store && isNewUser(store);
 
   if (!store || !clock || isNew) return <ListSkeleton />;
 
@@ -50,6 +51,8 @@ export function TodayView() {
           </Button>
         )}
       </PageHeader>
+
+      <WeatherToday today={today} />
 
       <FirstHint data={data} />
 
