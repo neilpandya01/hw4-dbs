@@ -124,8 +124,7 @@ export function FirstTaskStep({
       </div>
       {skipWarned && draft.title.trim() && (
         <p role="status" className="rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
-          &ldquo;{draft.title.trim()}&rdquo; isn&rsquo;t saved yet. Press Add to my list to keep it, or I&rsquo;ll add
-          tasks later again to skip it.
+          Your current task isn&rsquo;t saved. Press &ldquo;I&rsquo;ll add tasks later&rdquo; again to continue without saving it.
         </p>
       )}
     </form>
