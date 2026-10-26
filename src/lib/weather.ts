@@ -141,6 +141,16 @@ function toForecast(r: ForecastResponse): Forecast {
 
 export type Place = { id: number; label: string; detail: string; lat: number; lon: number };
 
+/** Join place parts, dropping repeats: "Ashgabat, Ashgabat, Turkmenistan" → "Ashgabat, Turkmenistan". */
+function joinPlace(parts: (string | undefined)[]): string {
+  return parts.filter((p, i, all): p is string => !!p && all.indexOf(p) === i).join(", ");
+}
+
+/** Tidy a saved place label for display (older ones may repeat the city, like "Ashgabat, Ashgabat"). */
+export function placeLabel(label: string): string {
+  return joinPlace(label.split(",").map((p) => p.trim()));
+}
+
 /**
  * Search cities by name. Returns [] when nothing matches (Open-Meteo then omits `results`).
  * Throws when the API is down, so the caller can tell "nothing found" from "not working".
@@ -154,10 +164,11 @@ export async function searchPlaces(name: string, signal?: AbortSignal): Promise<
   };
   return (body.results ?? []).map((p) => ({
     id: p.id,
-    // Saved and shown on Today, e.g. "Chicago, Illinois".
-    label: [p.name, p.admin1 ?? p.country].filter(Boolean).join(", "),
+    // Saved and shown on Today, e.g. "Chicago, Illinois". When the region has the city's own name
+    // (Ashgabat, Mexico City), use the country instead: "Ashgabat, Turkmenistan".
+    label: joinPlace([p.name, p.admin1 && p.admin1 !== p.name ? p.admin1 : p.country]),
     // Only to tell same-named places apart in the list.
-    detail: [p.admin1, p.country].filter(Boolean).join(", "),
+    detail: joinPlace([p.admin1 === p.name ? undefined : p.admin1, p.country]),
     lat: p.latitude,
     lon: p.longitude,
   }));

@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { searchPlaces, type Place } from "@/lib/weather";
+import { placeLabel, searchPlaces, type Place } from "@/lib/weather";
 import { saveWeatherSettings, useWeatherSettings, type WeatherSettings } from "@/lib/weatherSettings";
 import { Button } from "./Button";
 import { describedBy, Field, TextInput } from "./Field";
@@ -101,16 +101,19 @@ export function WeatherSetup({
   const loadError = settings.status === "error" ? settings.message : null;
   const current = settings.status === "ready" ? settings.settings : null;
   // Coming Back to this step after choosing: offer to keep that choice.
-  const currentLabel = current?.mode === "location" ? "your location" : current?.mode === "place" ? current.placeName : null;
+  const savedPlace = current?.placeName ? placeLabel(current.placeName) : null;
+  const currentLabel = current?.mode === "location" ? "your location" : current?.mode === "place" ? savedPlace : null;
   const big = variant === "onboarding";
   const isSettings = variant === "settings";
+  // Offered outside the header setting, when there's a choice to keep (e.g. Back in onboarding).
+  const keepLabel = !isSettings && onDone ? currentLabel : null;
   // Today's card and the header setting can both be on screen: keep their ids apart.
   const cityId = `${variant}-weather-city`;
   const nowShowing =
     current?.mode === "location"
       ? "Now showing weather for your location."
       : current?.mode === "place"
-        ? `Now showing weather for ${current.placeName ?? "your saved city"}.`
+        ? `Now showing weather for ${savedPlace ?? "your saved city"}.`
         : current?.mode === "off"
           ? "Weather is off."
           : null;
@@ -148,7 +151,26 @@ export function WeatherSetup({
           </p>
         )}
 
-        {phase === "ask" && (
+        {/* Coming Back with a choice saved: keeping it is the main action, on its own row, and the
+            other options sit together below, so a long city name never pushes a button onto a stray line. */}
+        {phase === "ask" && keepLabel && (
+          <div className="flex flex-col gap-3">
+            <Button className="min-w-0 max-w-full sm:self-start" onClick={onDone} disabled={!!busy} title={`Keep ${keepLabel}`}>
+              <span className="truncate">Keep {keepLabel}</span>
+            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button variant="secondary" onClick={shareLocation} disabled={!!busy || !!loadError} aria-busy={busy === "locating"}>
+                {busy === "locating" && <Spinner />}
+                {busy === "locating" ? "Finding you…" : busy === "saving" ? "Saving…" : "Use my location"}
+              </Button>
+              <Button variant="secondary" onClick={() => askForCity(null)} disabled={!!busy || !!loadError}>
+                Pick a city instead
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {phase === "ask" && !keepLabel && (
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <Button onClick={shareLocation} disabled={!!busy || !!loadError} aria-busy={busy === "locating"}>
               {busy === "locating" && <Spinner />}
@@ -164,11 +186,6 @@ export function WeatherSetup({
                 onClick={() => void save({ mode: "off", lat: null, lon: null, placeName: null })}
               >
                 Turn weather off
-              </Button>
-            )}
-            {!isSettings && currentLabel && onDone && (
-              <Button variant="ghost" onClick={onDone} disabled={!!busy}>
-                Keep {currentLabel}
               </Button>
             )}
           </div>

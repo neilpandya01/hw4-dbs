@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 import { useForecastState } from "@/lib/forecast";
-import { dayForecast, formatHour, skyFor, skyLabel, type DayForecast, type Forecast, type Sky } from "@/lib/weather";
+import { dayForecast, formatHour, placeLabel, skyFor, skyLabel, type DayForecast, type Forecast, type Sky } from "@/lib/weather";
 import { useWeatherSettings } from "@/lib/weatherSettings";
 import { WeatherIcon } from "./WeatherIcon";
 import { WeatherSetup } from "./WeatherSetup";
@@ -93,7 +93,7 @@ export function WeatherToday({ today }: { today: string }) {
   // A place in another time zone may not have "today" yet or anymore: use its first day.
   const day = dayForecast(forecast, today) ?? forecast.days[0];
   const sky = skyFor(forecast.current.code, forecast.current.night);
-  const place = settings.mode === "place" ? (settings.placeName ?? "Saved city") : "Your location";
+  const place = settings.mode === "place" ? (settings.placeName ? placeLabel(settings.placeName) : "Saved city") : "Your location";
   const style = {
     background: `linear-gradient(135deg, color-mix(in oklab, ${TINT[sky]} 22%, var(--surface)) 0%, var(--surface) 75%)`,
   } satisfies CSSProperties;
