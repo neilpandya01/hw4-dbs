@@ -21,6 +21,8 @@ export type ForecastState = {
   status: "idle" | "no-location" | "loading" | "ready" | "error";
   /** The last good forecast, kept through a failed refresh so the page doesn't go blank. */
   forecast: Forecast | null;
+  /** Where the forecast is for (rounded to 2 decimals), while there is one or it's loading. */
+  coords?: { lat: number; lon: number } | null;
 };
 
 const IDLE: ForecastState = { status: "idle", forecast: null };
@@ -32,7 +34,8 @@ let inFlight: AbortController | null = null;
 const listeners = new Set<() => void>();
 
 function set(next: ForecastState) {
-  state = next;
+  const at = place && next.status !== "idle" && next.status !== "no-location" ? place.split(",").map(Number) : null;
+  state = { ...next, coords: at ? { lat: at[0], lon: at[1] } : null };
   listeners.forEach((l) => l());
 }
 

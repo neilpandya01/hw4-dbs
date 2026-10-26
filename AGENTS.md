@@ -52,6 +52,7 @@ Index on `(user_id, date)`: every view loads tasks by person and day.
 
 ### Not in the database
 - **The forecast.** Fetched from Open-Meteo each time; it changes hourly and is the same for everyone. Store the location, never the weather.
+- **The nearest place name for `location` mode.** Looked up in the browser from the rounded coordinates and cached on the device; never saved to the database.
 - **Wrap-up "Not now" (`wrapUpDismissedOn`) and the one-time hint (`showFirstHint`).** Small UI memory that stays in localStorage on each device; a new device may show them again.
 - **hw3 localStorage tasks** are not imported; accounts start fresh.
 
@@ -61,7 +62,7 @@ Index on `(user_id, date)`: every view loads tasks by person and day.
 - `src/lib/validate.ts`: task errors and soft warnings (similar names, far-future dates). `src/lib/clock.ts`: current day and minute, ticking on the minute.
 - `src/lib/supabase.ts`: the one browser Supabase client; sends the Clerk session token (set by `AccountSync`). Publishable key only.
 - `src/components/AccountSync.tsx` (in the layout): on sign-in loads tasks, settings, and weather choice; clears them on sign-out; refetches on returning to the tab.
-- Weather: `src/lib/weather.ts` (Open-Meteo calls and parsing, icons' `Sky`), `src/lib/weatherSettings.ts` (the person's `user_settings` weather columns), `src/lib/forecast.ts` (the shared forecast and when to refetch), `src/components/WeatherSync.tsx` (in the layout: triggers forecast checks), `WeatherSetup.tsx` (location → city → off; also the header's Weather · Change editor), `Weather.tsx` (Today card, At a Glance chip), `WeatherIcon.tsx`.
+- Weather: `src/lib/weather.ts` (Open-Meteo calls and parsing, icons' `Sky`), `src/lib/weatherSettings.ts` (the person's `user_settings` weather columns), `src/lib/forecast.ts` (the shared forecast and when to refetch), `src/lib/nearestPlace.ts` ("Near Chicago, Illinois" for use-my-location, from BigDataCloud's free reverse-geocoding endpoint, rounded coordinates only), `src/components/WeatherSync.tsx` (in the layout: triggers forecast checks), `WeatherSetup.tsx` (location → city → off; also the header's Weather · Change editor), `Weather.tsx` (Today card, At a Glance chip), `WeatherIcon.tsx`.
 - Routes: `/` Today, `/add`, `/glance` At a Glance, `/calendar`, `/done`, `/welcome` onboarding (`?step=time|weather|task`).
 - `src/components`: shared UI. Reuse it instead of one-off markup.
 

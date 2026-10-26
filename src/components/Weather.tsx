@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { useForecastState } from "@/lib/forecast";
 import { dayForecast, formatHour, placeLabel, skyFor, skyLabel, type DayForecast, type Forecast, type Sky } from "@/lib/weather";
+import { useNearestPlace } from "@/lib/nearestPlace";
 import { useWeatherSettings } from "@/lib/weatherSettings";
 import { WeatherIcon } from "./WeatherIcon";
 import { WeatherSetup } from "./WeatherSetup";
@@ -46,7 +47,10 @@ function WeatherNote({ children }: { children: ReactNode }) {
  */
 export function WeatherToday({ today }: { today: string }) {
   const settingsState = useWeatherSettings();
-  const { status, forecast } = useForecastState();
+  const { status, forecast, coords } = useForecastState();
+  // "Use my location": name the nearest city or town, e.g. "Near Chicago, Illinois".
+  const usingLocation = settingsState.status === "ready" && settingsState.settings.mode === "location";
+  const nearby = useNearestPlace(usingLocation ? (coords ?? null) : null);
 
   if (settingsState.status === "error") {
     return (
@@ -93,7 +97,14 @@ export function WeatherToday({ today }: { today: string }) {
   // A place in another time zone may not have "today" yet or anymore: use its first day.
   const day = dayForecast(forecast, today) ?? forecast.days[0];
   const sky = skyFor(forecast.current.code, forecast.current.night);
-  const place = settings.mode === "place" ? (settings.placeName ? placeLabel(settings.placeName) : "Saved city") : "Your location";
+  const place =
+    settings.mode === "place"
+      ? settings.placeName
+        ? placeLabel(settings.placeName)
+        : "Saved city"
+      : nearby
+        ? `Near ${nearby}`
+        : "Your location";
   const style = {
     background: `linear-gradient(135deg, color-mix(in oklab, ${TINT[sky]} 22%, var(--surface)) 0%, var(--surface) 75%)`,
   } satisfies CSSProperties;
