@@ -63,7 +63,8 @@ export function TodayView() {
       {earlier.length > 0 && <FromEarlier tasks={earlier} today={today} />}
 
       <Section title="Today">
-        {todays.length > 0 && openToday.length === 0 && (
+        {/* Only all clear when nothing rolled over is waiting either. */}
+        {todays.length > 0 && openToday.length === 0 && earlier.length === 0 && (
           <EmptyState title="All clear for today.">
             <ButtonLink href={`/add?date=${addDays(today, 1)}`}>Plan tomorrow</ButtonLink>
             <ButtonLink variant="secondary" href="/glance">
@@ -90,6 +91,12 @@ export function TodayView() {
               Plan another day
             </ButtonLink>
           </EmptyState>
+        )}
+        {todays.length > 0 && openToday.length === 0 && earlier.length > 0 && (
+          <p className="text-sm text-muted">
+            Today&apos;s tasks are done. {earlier.length === 1 ? "One rolled-over task is" : `${earlier.length} rolled-over tasks are`}{" "}
+            still waiting above.
+          </p>
         )}
         {todays.length === 0 && earlier.length > 0 && (
           <p className="text-sm text-muted">Nothing new for today yet. Move a rolled-over task into today, or add one above.</p>

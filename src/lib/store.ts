@@ -42,7 +42,7 @@ export type Data = {
   /** This device only. */
   wrapUpDismissedOn: string | null;
   tasks: Task[];
-  /** Set when the welcome flow is finished or skipped. */
+  /** Set when the welcome flow is finished or skipped. Undefined when the list couldn't load, so it's unknown. */
   onboarded?: boolean;
   /** This device only. Show the one-time "here's how it works" hint until the first check-off or "Got it". */
   showFirstHint?: boolean;
@@ -147,6 +147,28 @@ export function useStore(): Snapshot | null {
   return useSyncExternalStore<Snapshot | null>(subscribe, getSnapshot, () => null);
 }
 
+// Whether any change is still on its way to the database, for the footer's "Saving…".
+// Kept apart from the snapshot so each save doesn't re-render every view.
+let saving = false;
+const savingListeners = new Set<() => void>();
+
+function setSaving(next: boolean) {
+  if (saving === next) return;
+  saving = next;
+  savingListeners.forEach((l) => l());
+}
+
+export function useSaving(): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      savingListeners.add(listener);
+      return () => savingListeners.delete(listener);
+    },
+    () => saving,
+    () => false,
+  );
+}
+
 /** Bumped by every local change, so a reload that started earlier never overwrites it. */
 let changeCount = 0;
 let pendingWrites = 0;
@@ -221,6 +243,7 @@ export function reloadStore() {
   if (!userId) return;
   lastFetch = 0;
   pendingWrites = 0;
+  setSaving(false);
   void fetchAll(userId);
 }
 
@@ -230,6 +253,7 @@ function persist(write: (db: NonNullable<ReturnType<typeof supabase>>, id: strin
   const id = userId;
   if (!db || !id) return setStatus("save-failed");
   pendingWrites++;
+  setSaving(true);
   queue = queue.then(async () => {
     try {
       const { error } = await write(db, id);
@@ -238,6 +262,7 @@ function persist(write: (db: NonNullable<ReturnType<typeof supabase>>, id: strin
       if (userId === id) setStatus("save-failed");
     } finally {
       pendingWrites = Math.max(0, pendingWrites - 1);
+      if (pendingWrites === 0) setSaving(false);
     }
   });
 }
@@ -253,10 +278,12 @@ function persistChanges(before: Data, after: Data) {
   if (removed.length) persist((db) => db.from("tasks").delete().in("id", removed));
 
   if (before.settings.wrapUpTime !== after.settings.wrapUpTime || !!before.onboarded !== !!after.onboarded) {
+    // If the list couldn't load, we don't know whether onboarding was finished: leave it as saved.
+    const onboarded = after.onboarded === undefined ? {} : { onboarded: after.onboarded };
     persist((db, id) =>
       db
         .from("user_settings")
-        .upsert({ user_id: id, wrap_up_time: after.settings.wrapUpTime, onboarded: !!after.onboarded }, { onConflict: "user_id" }),
+        .upsert({ user_id: id, wrap_up_time: after.settings.wrapUpTime, ...onboarded }, { onConflict: "user_id" }),
     );
   }
   if (userId && (before.wrapUpDismissedOn !== after.wrapUpDismissedOn || before.showFirstHint !== after.showFirstHint)) {

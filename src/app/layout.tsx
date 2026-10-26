@@ -9,6 +9,7 @@ import { DayRollover } from "@/components/DayRollover";
 import { OnboardingGate } from "@/components/OnboardingGate";
 import { Nav, NavTabs } from "@/components/Nav";
 import { SignedInOnly } from "@/components/SignedInOnly";
+import { SaveStatus } from "@/components/SaveStatus";
 import { StorageBanner } from "@/components/StorageBanner";
 import { ToastProvider } from "@/components/Toast";
 import { WeatherSync } from "@/components/WeatherSync";
@@ -70,9 +71,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
               {children}
             </main>
             <SignedInOnly>
-              <footer className="mx-auto w-full max-w-xl px-4 pb-6 text-center text-sm text-muted">
-                Saved to your account
-              </footer>
+              <SaveStatus />
             </SignedInOnly>
           </ToastProvider>
         </ClerkProvider>

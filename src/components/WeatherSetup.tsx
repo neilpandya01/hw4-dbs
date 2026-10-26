@@ -7,24 +7,30 @@ import { Button } from "./Button";
 import { describedBy, Field, TextInput } from "./Field";
 
 const HOUR = 60 * 60_000;
+/** Give up on finding the device's position after this long, and offer city search instead. */
+const LOCATE_TIMEOUT_MS = 10_000;
 
 /**
  * Where should weather come from? Asked in this order:
  *   1. "Use my location": the browser asks; on yes, save it (rounded to about 1 km).
  *   2. Location refused or unavailable (or "Pick a city instead"): search for a city and pick one.
  *   3. No city either ("Skip weather"): saved as off, so we don't ask again.
- * Used as an onboarding step and, for anyone who hasn't chosen yet, inside the Today weather card.
+ * Used as an onboarding step, inside the Today weather card for anyone who hasn't chosen yet,
+ * and as the header's weather setting ("settings"), where you can change or turn off your choice any time.
  */
 export function WeatherSetup({
   variant,
   headingRef,
   onDone,
   onBack,
+  onCancel,
 }: {
-  variant: "onboarding" | "card";
+  variant: "onboarding" | "card" | "settings";
   headingRef?: RefObject<HTMLHeadingElement | null>;
   onDone?: () => void;
   onBack?: () => void;
+  /** Settings only: close without changing anything (Cancel button and Escape). */
+  onCancel?: () => void;
 }) {
   const settings = useWeatherSettings();
   const [phase, setPhase] = useState<"ask" | "city">("ask");
@@ -70,7 +76,7 @@ export function WeatherSetup({
             : "Couldn't find your location. Search for your city instead.",
         );
       },
-      { timeout: 15_000, maximumAge: HOUR },
+      { timeout: LOCATE_TIMEOUT_MS, maximumAge: HOUR },
     );
   }
 
@@ -96,18 +102,38 @@ export function WeatherSetup({
   // Coming Back to this step after choosing: offer to keep that choice.
   const currentLabel = current?.mode === "location" ? "your location" : current?.mode === "place" ? current.placeName : null;
   const big = variant === "onboarding";
+  const isSettings = variant === "settings";
+  // Today's card and the header setting can both be on screen: keep their ids apart.
+  const cityId = `${variant}-weather-city`;
+  const nowShowing =
+    current?.mode === "location"
+      ? "Now showing weather for your location."
+      : current?.mode === "place"
+        ? `Now showing weather for ${current.placeName ?? "your saved city"}.`
+        : current?.mode === "off"
+          ? "Weather is off."
+          : null;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div
+      className={`flex flex-col ${isSettings ? "gap-4 py-4" : "gap-6"}`}
+      onKeyDown={(e) => {
+        if (isSettings && e.key === "Escape" && onCancel) {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+    >
       <section className={`flex flex-col gap-4 ${big ? "rounded-2xl border border-line bg-surface p-5" : ""}`}>
         <div className="flex flex-col gap-1">
           <h2
             ref={headingRef}
             tabIndex={-1}
-            className={`${big ? "text-2xl" : "text-lg"} font-semibold tracking-tight text-ink outline-none`}
+            className={`${big ? "text-2xl" : isSettings ? "text-base" : "text-lg"} font-semibold tracking-tight text-ink outline-none`}
           >
-            {phase === "ask" ? "Show the weather for your day?" : "Which city's weather?"}
+            {phase === "city" ? "Which city's weather?" : isSettings ? "Weather" : "Show the weather for your day?"}
           </h2>
+          {isSettings && phase === "ask" && nowShowing && <p className="text-sm text-ink">{nowShowing}</p>}
           <p className="text-sm text-muted">
             {phase === "ask"
               ? "Dayplan shows today's forecast and the week ahead next to your tasks. Your location is rounded to about 1 km and only used for weather."
@@ -123,19 +149,39 @@ export function WeatherSetup({
 
         {phase === "ask" && (
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <Button onClick={shareLocation} disabled={!!busy || !!loadError}>
+            <Button onClick={shareLocation} disabled={!!busy || !!loadError} aria-busy={busy === "locating"}>
+              {busy === "locating" && <Spinner />}
               {busy === "locating" ? "Finding you…" : busy === "saving" ? "Saving…" : "Use my location"}
             </Button>
             <Button variant="secondary" onClick={() => askForCity(null)} disabled={!!busy || !!loadError}>
-              Pick a city instead
+              {isSettings ? "Pick a city" : "Pick a city instead"}
             </Button>
-            {currentLabel && onDone && (
+            {isSettings && current?.mode !== "off" && (
+              <Button
+                variant="secondary"
+                disabled={!!busy || !!loadError}
+                onClick={() => void save({ mode: "off", lat: null, lon: null, placeName: null })}
+              >
+                Turn weather off
+              </Button>
+            )}
+            {!isSettings && currentLabel && onDone && (
               <Button variant="ghost" onClick={onDone} disabled={!!busy}>
                 Keep {currentLabel}
               </Button>
             )}
           </div>
         )}
+
+        {/* While the browser looks for the position, say so plainly (it can take up to 10 seconds). */}
+        <div role="status" aria-live="polite">
+          {busy === "locating" && (
+            <p className="flex items-center gap-2 text-sm text-ink">
+              <Spinner />
+              Finding your location… This can take up to 10 seconds.
+            </p>
+          )}
+        </div>
 
         {phase === "city" && (
           <form
@@ -146,17 +192,17 @@ export function WeatherSetup({
               void search();
             }}
           >
-            <Field id="weather-city" label="City" error={fieldError ?? undefined}>
+            <Field id={cityId} label="City" error={fieldError ?? undefined}>
               <div className="flex gap-2">
                 <TextInput
                   ref={input}
-                  id="weather-city"
+                  id={cityId}
                   className="min-w-0 flex-1"
                   value={query}
                   autoComplete="address-level2"
                   placeholder="e.g. Chicago"
                   invalid={!!fieldError}
-                  aria-describedby={describedBy("weather-city", { error: fieldError ?? undefined })}
+                  aria-describedby={describedBy(cityId, { error: fieldError ?? undefined })}
                   onChange={(e) => {
                     setQuery(e.target.value);
                     if (fieldError) setFieldError(null);
@@ -204,7 +250,12 @@ export function WeatherSetup({
             Back
           </Button>
         )}
-        {loadError && onDone ? (
+        {isSettings && onCancel && (
+          <Button variant="secondary" onClick={onCancel} disabled={busy === "saving"}>
+            Cancel
+          </Button>
+        )}
+        {isSettings ? null : loadError && onDone ? (
           // Settings can't be reached: don't trap someone in onboarding over weather.
           <Button variant="ghost" onClick={onDone}>
             Continue without weather
@@ -221,5 +272,15 @@ export function WeatherSetup({
         )}
       </div>
     </div>
+  );
+}
+
+/** A small spinning ring for "working on it". Stops spinning for people who prefer reduced motion. */
+function Spinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block size-4 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none"
+    />
   );
 }
