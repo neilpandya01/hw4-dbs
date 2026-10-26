@@ -1,6 +1,8 @@
-# End-to-end test: row-level security
+# End-to-end tests
 
 `rls.spec.ts` signs in two Clerk test users (Alice and Bob) in separate browsers. Each adds a task, both reload, and the test checks that each sees only their own.
+
+`same-name.spec.ts` adds two tasks with the same name, reorders them, checks one off, deletes it, and reloads: the other stays, untouched.
 
 ```bash
 npm run test:e2e

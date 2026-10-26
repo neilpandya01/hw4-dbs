@@ -1,14 +1,17 @@
 # Flows
 
-Dayplan's three flows: the first visit, the main task, and coming back.
+Dayplan's flows: the first visit (signing up and onboarding), the main task, coming back, and weather.
 
 ## First visit
 
-> **I open Dayplan with nothing saved → I read what it's for → I set when I'm usually done for the day → I choose where my weather comes from → I add my first task by tapping an example, for today or another day → I land on Today (or At a Glance, for a later day), with a one-time hint on how it works.**
+> **I open Dayplan → I sign up → I read what it's for → I set when I'm usually done for the day → I choose where my weather comes from, or skip it → I add my first task by tapping an example, for today or another day → I land on Today (or At a Glance, for a later day), with a one-time hint on how it works.**
 
 ```mermaid
 flowchart TD
-  A([Open Dayplan]) --> B{Anything saved?}
+  A([Open Dayplan]) --> S{Signed in?}
+  S -- No --> SI["/sign-in (or /sign-up for a new account), with Clerk"]
+  SI --> B{Finished onboarding?}
+  S -- Yes --> B
   B -- Yes --> T[Today, no onboarding]
   B -- No --> W0["/welcome step 1 of 4: overview, what Dayplan is and how it works"]
   W0 -- Get started --> W1["Step 2 of 4: When do you wrap up?"]
@@ -17,7 +20,8 @@ flowchart TD
   W1 -- Continue: time saved --> WX["Step 3 of 4: Show the weather for your day?"]
   WX -- Back --> W1
   WX -- "Use my location: browser allows" --> WS[(Saved: location, rounded to ~1 km)]
-  WX -- "Browser blocks, or Pick a city instead" --> WC["Which city's weather? (search)"]
+  WX -- "Browser blocks, can't find me within 10 s, or Pick a city instead" --> WC["Which city's weather? (search)"]
+  WX -- "Keep my choice (coming Back to this step)" --> W2
   WC -- "no match / search down: error under the field" --> WC
   WC -- Pick a result --> WP[(Saved: that city)]
   WC -- Skip weather --> WO[(Saved: off, no weather shown anywhere)]
@@ -32,7 +36,9 @@ flowchart TD
   W2 -- Add, for Tomorrow or another day --> D[At a Glance + one-time hint]
 ```
 
-Each step has its own URL (`/welcome?step=overview|time|weather|task`), so Back goes to the previous step. Opening or reloading `/welcome` at any URL lands on the step you'd reached (the first one not yet answered), never past an unanswered step.
+- Every page except `/sign-in` and `/sign-up` needs an account; a signed-out visitor is sent to sign in and sees no one's data. Signing out is in the account menu (top right).
+- Each step has its own URL (`/welcome?step=overview|time|weather|task`), so Back goes to the previous step. Opening or reloading `/welcome` at any URL lands on the step you'd reached (the first one not yet answered), never past an unanswered step. Opening any other page before finishing sends you back to it.
+- Skipping a typed first task warns once: "Your current task isn't saved. Press "I'll add tasks later" again to continue without saving it."
 
 ## Main task
 
@@ -44,7 +50,7 @@ flowchart LR
   A -->|valid| B["It's on that day's list (highlighted)"]
   B --> C["Check it off (strikethrough; uncheck to undo)"]
   C --> D{Past my wrap-up time and tasks left?}
-  D -- No, all done --> E[All clear: plan tomorrow]
+  D -- "No, all done (rolled-over tasks too)" --> E[All clear: plan tomorrow]
   D -- Yes --> F[Wrap up your day card]
   F -- Keep for tomorrow / Pick a day / Let it go --> G([Day wrapped])
   F -- Not now / ignored --> H["Next day: it rolls over, shown under 'Rolled over · N' on Today"]
@@ -62,13 +68,14 @@ flowchart LR
 - Loading (a skeleton, never a flash of "empty")
 - Empty day, with a button to add a task
 - Just added (highlighted)
-- All done for the day
+- All done for the day (only once rolled-over tasks are done too; otherwise "Today's tasks are done. N rolled-over tasks are still waiting above.")
 - Wrap-up due, dismissed, or wrapped
 - Rolled over tasks waiting
+- Saving: the footer says "Saving…", then "Saved to your account"; if a change fails, "Not saved…" or "Couldn't load your account…"
 
 **Errors** (shown next to the field, saying what to do next, keeping what you typed)
 - "Enter a task name."
-- "Shorten this to 120 characters or fewer."
+- "Shorten this to 120 characters or fewer (now N)."
 - "Pick a day for this task." / "Pick today or a later day." / "That's not a real date. Check the year."
 - A task already on that day, or very similar to one: a soft warning. Press Add again to keep both.
 - A date more than a year away: a soft warning to check the year.
@@ -93,12 +100,14 @@ flowchart TD
   F -- Move all to today / Check off / Edit --> P
 ```
 
+Your list, wrap-up time, and weather choice are saved to your account, so they're the same after signing out and back in, and on any device.
+
 ## Weather
 
-> **I open Today → I see the weather where I am (or my chosen city) → the week ahead sits next to each day on At a Glance → it stays current while I use the app, without asking the API more than it needs to.**
+> **I open Today → I see the weather where I am (named after the nearest town) or for my chosen city → the week ahead sits next to each day on At a Glance → it stays current while I use the app, without asking the API more than it needs to.**
 
-Where it comes from is chosen in onboarding (or on Today, for anyone who signed up before weather existed), can be changed or turned off any time from **Weather · Change** in the header strip, and is saved in Supabase (`user_settings`):
-- **Location:** this device's position when the browser allows it; otherwise the last saved coordinates.
+Where it comes from is chosen in onboarding (or on Today, for anyone who signed up before weather existed), can be changed or turned off any time from **Weather · Change** in the header strip, and is saved in Supabase (`user_settings`). Weather is optional: **Skip weather** is offered right away.
+- **Location:** this device's position when the browser allows it; otherwise the last saved coordinates. The card names the nearest town ("Near Chicago, Illinois", from BigDataCloud), or says "Your location" if that lookup fails. Looking for the position shows a spinner and gives up after 10 seconds, offering city search.
 - **City:** the searched city, always.
 - **Off:** no weather anywhere.
 
@@ -109,7 +118,7 @@ Where it comes from is chosen in onboarding (or on Today, for anyone who signed 
 
 **States**
 - Loading: a placeholder the size of the card.
-- Not chosen yet, or "location" with no position shared and none saved: the card asks (location → city → off).
+- Not chosen yet, or "location" with no position shared and none saved: the card asks (use my location, pick a city, or skip).
 - Off: nothing shown.
 - API down: "Weather is unavailable right now. Your tasks are fine." If an earlier forecast exists, it stays, with "Couldn't refresh."
 - City search: "No places match…" when nothing is found; "City search isn't working right now…" when the API is down.
